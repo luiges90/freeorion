@@ -7,9 +7,8 @@ import ColonisationAI
 import ShipDesignAI
 import random
 
-from freeorion_tools import tech_is_complete
+from freeorion_tools import tech_is_complete, get_ai_tag_grade
 
-priorities = {}
 empire_stars = {}
 
 # TODO research AI no longer use this method, rename and move this method elsewhere
@@ -40,11 +39,30 @@ def has_only_bad_colonizers():
         most_adequate = max(most_adequate, len(environs.get(fo.planetEnvironment.adequate, [])))
     return most_adequate == 0
 
+def get_max_stealth_species():
+    stealth_grades = {'BAD': -15, 'GOOD': 15, 'GREAT': 40, 'ULTIMATE': 60}
+    stealth = -999
+    stealth_species = ""
+    for specName in ColonisationAI.empire_species:
+        this_spec = fo.getSpecies(specName)
+        if not this_spec:
+            continue
+        this_stealth = stealth_grades.get(get_ai_tag_grade(list(this_spec.tags), "STEALTH"), 0)
+        if this_stealth > stealth:
+            stealth_species = specName
+            stealth = this_stealth
+    result = (stealth_species, stealth)
+    return result
+
 def get_defense_priority():
-    # TODO reduce priority at very early stage for defense techs, until enemies seen
-    if 'defense' not in priorities:
-        priorities['defense'] = 2 if foAI.foAIstate.aggression <= fo.aggression.cautious else 1
-    return priorities['defense']
+    if foAI.foAIstate.aggression <= fo.aggression.cautious:
+        print "AI is cautious. Increasing priority for defense techs."
+        return 2
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for defense techs."
+        return 1
+    else:
+        return 0.2
 
 def get_production_boost_priority():
     return 1.5
@@ -59,19 +77,23 @@ def get_population_boost_priority():
     return 2
 
 def get_supply_boost_priority():
-    # TODO consider starlane density and planet density instead
-    if 'supply' not in priorities:
-        priorities['supply'] = 2 if ColonisationAI.galaxy_is_sparse() else 0.5
-    return priorities['supply']
+    # TODO consider starlane density and planet density
+    return 1
 
 def get_meter_change_boost_priority():
     return 1
 
 def get_detection_priority():
-    return 1  # TODO consider stealth of enemies
+    # TODO consider stealth of enemies
+    return 1
 
 def get_stealth_priority():
-    return 0  # TODO stealthy species want more stealth techs
+    max_stealth_species = get_max_stealth_species()
+    if max_stealth_species[1] > 0:
+        print("Has a stealthy species " + max_stealth_species[0] + ". Increase stealth tech priority")
+        return 2.5
+    else:
+        return 0
 
 def get_genome_bank_priority():
     # TODO boost genome bank if enemy is using bioterror
