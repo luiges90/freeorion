@@ -31,7 +31,7 @@ def has_only_bad_colonizers():
         most_adequate = max(most_adequate, len(environs.get(fo.planetEnvironment.adequate, [])))
     return most_adequate == 0
 
-def get_priority(tech_name, empire):
+def get_priority(tech_name):
     """
     Get tech priority. 1 is default. 0 if not useful (but doesn't hurt to research),
     < 0 to prevent AI to research it
@@ -391,7 +391,7 @@ def generate_research_orders():
     research_reqs = calculate_research_requirements(empire)
     priorities = {}
     for tech_name in fo.techs():
-        priority = get_priority(tech_name, empire)
+        priority = get_priority(tech_name)
         if not tech_is_complete(tech_name) and priority >= 0:
             priorities[tech_name] = float(priority) / research_reqs[tech_name][1]
 
