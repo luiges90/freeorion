@@ -11,6 +11,10 @@ from freeorion_tools import tech_is_complete, get_ai_tag_grade
 
 empire_stars = {}
 
+rng = random.Random()
+rng.seed(fo.getEmpire().name + fo.getGalaxySetupData().seed)
+
+
 # TODO research AI no longer use this method, rename and move this method elsewhere
 def get_research_index():
     empire_id = fo.empireID()
@@ -53,6 +57,46 @@ def get_max_stealth_species():
             stealth = this_stealth
     result = (stealth_species, stealth)
     return result
+
+def get_ship_tech_usefulness(tech, ship_designer):
+    this_tech = fo.getTech(tech)
+    if not this_tech:
+        print "Invalid Tech specified"
+        return 0
+    unlocked_items = this_tech.unlockedItems
+    unlocked_hulls = []
+    unlocked_parts = []
+    for item in unlocked_items:
+        if item.type == fo.unlockableItemType.shipPart:
+            print "Tech %s unlocks a ShipPart: %s" % (tech, item.name)
+            unlocked_parts.append(item.name)
+        elif item.type == fo.unlockableItemType.shipHull:
+            print "Tech %s unlocks a ShipHull: %s" % (tech, item.name)
+            unlocked_hulls.append(item.name)
+    if not (unlocked_parts or unlocked_hulls):
+        print "No new ship parts/hulls unlocked by tech %s" % tech
+        return 0
+    old_designs = ship_designer.optimize_design(consider_fleet_count=False)
+    new_designs = ship_designer.optimize_design(additional_hulls=unlocked_hulls, additional_parts=unlocked_parts, consider_fleet_count=False)
+    if not (old_designs and new_designs):
+        # AI is likely defeated; don't bother with logging error message
+        return 0
+    old_rating, old_pid, old_design_id, old_cost = old_designs[0]
+    old_design = fo.getShipDesign(old_design_id)
+    new_rating, new_pid, new_design_id, new_cost = new_designs[0]
+    new_design = fo.getShipDesign(new_design_id)
+    if new_rating > old_rating:
+        ratio = new_rating / old_rating
+        print "Tech %s gives access to a better design!" % tech
+        print "old best design: Rating %.5f" % old_rating
+        print "old design specs: %s - " % old_design.hull, list(old_design.parts)
+        print "new best design: Rating %.5f" % new_rating
+        print "new design specs: %s - " % new_design.hull, list(new_design.parts)
+        print "priority for tech %s: %.5f" % tech, ratio
+        return ratio
+    else:
+        print "Tech %s gives access to new parts or hulls but there seems to be no military advantage." % tech
+        return 0
 
 def get_defense_priority():
     if foAI.foAIstate.aggression <= fo.aggression.cautious:
@@ -137,23 +181,16 @@ def get_nest_domestication_priority():
     else:
         return 0
 
-def get_priority(tech_name):
-    """
-    Get tech priority. 1 is default. 0 if not useful (but doesn't hurt to research),
-    < 0 to prevent AI to research it
-    """
+def get_damage_control_priority():
+    return 1
 
-    rng = random.Random()
-    rng.seed(fo.getEmpire().name + fo.getGalaxySetupData().seed)
-
-    shield = 1.25 # shields are more powerful than armors or weapons
+def get_hull_priority(tech_name):
     hull = 1
     offtrack_hull = 0.05
-    offtrack_subhull = 0.25
-    # select one hull and specialize it, but some AI may want to have more hulls, by random
+
     chosen_hull = rng.randrange(4)
     org = hull if chosen_hull % 2 == 0 or rng.random() < 0.05 else offtrack_hull
-    robotic = hull if chosen_hull % 2 == 1 or rng.random() < 0.05 else offtrack_hull
+    robotic = hull if chosen_hull % 2 == 0 or rng.random() < 0.05 else offtrack_hull
     if ColonisationAI.got_ast:
         extra = rng.random() < 0.05
         asteroid = hull if chosen_hull == 2 or extra else offtrack_hull
@@ -172,44 +209,26 @@ def get_priority(tech_name):
     else:
         energy = offtrack_hull
 
-    # TODO consider subhulls, weapons, armors, engines and fuels by estimating their strengths
-    # https://github.com/freeorion/freeorion/pull/178
-    # further specialization for robotic hulls
-    chosen_subhull = rng.randrange(2)
-    contgrav = hull if robotic == hull and chosen_subhull == 0 else offtrack_subhull
-    nanorobo = hull if robotic == hull and chosen_subhull == 1 else offtrack_subhull
-    flux = hull if robotic == hull and rng.random() < 0.5 else offtrack_subhull
-    # further specialization for asteroid hulls
-    chosen_subhull = rng.randrange(3)
-    astheavy = hull if asteroid == hull and chosen_subhull == 0 else offtrack_subhull
-    astswarm = hull if asteroid == hull and chosen_subhull == 1 else offtrack_subhull
-    astcamo = hull if asteroid == hull and chosen_subhull == 2 else offtrack_subhull
-    # further specialization for organic hulls
-    chosen_subhull = rng.randrange(2)
-    orgneural = hull if org == hull and chosen_subhull == 0 else offtrack_subhull
-    orgraven = hull if org == hull and chosen_subhull == 1 else offtrack_subhull
-    orgendosym = hull if org == hull and rng.random() < 0.5 else offtrack_subhull
-    # further specialization for energy hulls
-    chosen_subhull = rng.randrange(2)
-    energyfrac = hull if energy == hull and chosen_subhull == 0 else offtrack_subhull
-    energymag = hull if energy == hull and chosen_subhull == 1 else offtrack_subhull
-    # repair techs may be skipped if AI decides to go for nanorobotic hull which full-repairs
-    repair = 1 if not nanorobo == hull or rng.random() < 0.75 else 0.3
+    useful = max(
+        get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
+        get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner()),
+        get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
+    if tech_name in AIDependencies.ROBOTIC_HULL_TECHS:
+        return robotic * useful
+    elif tech_name in AIDependencies.ORGANIC_HULL_TECHS:
+        return org * useful
+    elif tech_name in AIDependencies.ASTEROID_HULL_TECHS:
+        return asteroid * useful
+    elif tech_name in AIDependencies.ENERGY_HULL_TECHS:
+        return energy * useful
+    else:
+        return useful
 
-    # (Disabled) AI may skip weapon lines
-    weapon = 1
-    # massdriver = weapon if rng.random() < 0.75 else 0
-    # laser = weapon if (rng.random() < 0.4 if massdriver == weapon else rng.random() < 0.75) else 0
-    # plasmacannon = weapon if (rng.random() < 0.4 if laser == weapon else rng.random() < 0.75) else 0
-    massdriver = weapon
-    laser = weapon
-    plasmacannon = weapon
-    deathray = weapon
-
-    armor = 1
-
-    engine = 1 if (rng.random() < 0.8 if ColonisationAI.galaxy_is_sparse() else rng.random() < 0.4) else 0
-    fuel = 1 if (rng.random() < 0.8 if ColonisationAI.galaxy_is_sparse() else rng.random() < 0.4) else 0
+def get_priority(tech_name):
+    """
+    Get tech priority. 1 is default. 0 if not useful (but doesn't hurt to research),
+    < 0 to prevent AI to research it
+    """
 
     if tech_name in AIDependencies.UNRESEARCHABLE_TECHS:
         return -1
@@ -287,87 +306,32 @@ def get_priority(tech_name):
     if tech_name == AIDependencies.NEST_DOMESTICATION_TECH:
         return get_nest_domestication_priority()
 
-    # Production
-    if tech_name in ["PRO_NEUTRONIUM_EXTRACTION"]:
-        return armor if has_star(fo.starType.neutron) else 0 # application of neutronium extraction is armor only for now
-
-    # Robotic hulls
-    if tech_name in ["SHP_MIL_ROBO_CONT", "SHP_MIDCOMB_LOG"]:
-        return robotic
-    if tech_name in ["SHP_SPACE_FLUX_DRIVE", "SHP_TRANSSPACE_DRIVE"]:
-        return min(robotic, flux)
-    if tech_name in ["SHP_CONTGRAV_MAINT", "SHP_MASSPROP_SPEC"]:
-        return min(robotic, contgrav)
-    if tech_name in ["SHP_NANOROBO_MAINT"]:
-        return min(robotic, nanorobo)
-    if tech_name in ["SHP_XENTRONIUM_HULL"]:
-        return 1 # this is not a robotic hull!
-
-    # Asteroid hulls
-    if tech_name in ["SHP_ASTEROID_HULLS", "SHP_ASTEROID_REFORM", "SHP_MONOMOLEC_LATTICE", "SHP_SCAT_AST_HULL"]:
-        return asteroid
-    if tech_name in ["SHP_HEAVY_AST_HULL"]:
-        return min(asteroid, astheavy)
-    if tech_name in ["SHP_CAMO_AST_HULL"]:
-        return min(asteroid, astcamo)
-    if tech_name in ["SHP_MINIAST_SWARM"]:
-        return min(asteroid, astswarm)
-
-    # Organic hulls
-    if tech_name in ["SHP_ORG_HULL", "SHP_SENT_HULL"]:
-        return org
-    if tech_name in ["SHP_MULTICELL_CAST", "SHP_ENDOCRINE_SYSTEMS", "SHP_CONT_BIOADAPT"]:
-        return min(org, orgraven)
-    if tech_name in ["SHP_MONOCELL_EXP", "SHP_CONT_SYMB", "SHP_BIOADAPTIVE_SPEC"]:
-        return min(org, orgneural)
-    if tech_name in ["SHP_ENDOSYMB_HULL"]:
-        return min(org, orgendosym)
-
-    # energy hulls
-    if tech_name in ["SHP_FRC_ENRG_COMP"]:
-        return energy
-    if tech_name in ["SHP_QUANT_ENRG_MAG"]:
-        return min(energy, energymag, 999 if has_star(fo.starType.blue) or has_star(fo.starType.blackHole) else 0)
-    if tech_name in ["SHP_ENRG_BOUND_MAN"]:
-        return min(energy, energyfrac, 999 if has_star(fo.starType.blue) or has_star(fo.starType.blackHole) else 0)
-    if tech_name in ["SHP_SOLAR_CONT"]:
-        return min(energy, 999 if has_star(fo.starType.red) or has_star(fo.starType.blackHole) else 0) # red star can be turned into has_black_hole by Artificial black hole
-
     # damage control
-    if tech_name in ["SHP_REINFORCED_HULL"]:
-        return armor
-    if tech_name in ["SHP_BASIC_DAM_CONT", "SHP_FLEET_REPAIR", "SHP_ADV_DAM_CONT"]:
-        return repair
+    if tech_name in AIDependencies.DAMAGE_CONTROL_TECHS:
+        return get_damage_control_priority()
+
+    # ship hulls
+    if tech_name in AIDependencies.HULL_TECHS:
+        return get_hull_priority(tech_name)
 
     # ship parts
-    if tech_name in ["SHP_IMPROVED_ENGINE_COUPLINGS", "SHP_N_DIMENSIONAL_ENGINE_MATRIX", "SHP_SINGULARITY_ENGINE_CORE"]:
-        return engine
-    if tech_name in ["SHP_DEUTERIUM_TANK", "SHP_ANTIMATTER_TANK", "SHP_ZERO_POINT"]:
-        return fuel
+    if tech_name in AIDependencies.SHIP_PART_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return useful
 
-    # ship shields
-    if tech_name in ["SHP_DEFLECTOR_SHIELD", "SHP_PLASMA_SHIELD", "SHP_BLACKSHIELD"]:
-        return shield
-    if tech_name in ["SHP_MULTISPEC_SHIELD"]:
-        return max(shield, get_stealth_priority())
+    # troop pod parts
+    if tech_name in AIDependencies.TROOP_POD_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner())
+        return useful
 
-    # ship armor TODO include these branches into ship-design calculation
-    if tech_name in ["SHP_ROOT_ARMOR", "SHP_ZORTRIUM_PLATE"]:
-        return armor
-    if tech_name in ["SHP_DIAMOND_PLATE", "SHP_XENTRONIUM_PLATE"]:
-        return 0 if asteroid == hull or has_star(fo.starType.neutron) else armor # asteroid hull line and neutronium extraction includes better armors
-
-    # weapons TODO include these branches into ship-design calculation
-    if tech_name in ["SHP_ROOT_AGGRESSION", "SHP_WEAPON_1_2", "SHP_WEAPON_1_3", "SHP_WEAPON_1_4"]:
-        return massdriver if not tech_is_complete("SHP_WEAPON_4_1") else 0 # don't research obsolete weapons if get deathray from ruins
-    if tech_name in ["SHP_WEAPON_2_1", "SHP_WEAPON_2_2", "SHP_WEAPON_2_3", "SHP_WEAPON_2_4"]:
-        return laser if not tech_is_complete("SHP_WEAPON_4_1") else 0
-    if tech_name in ["SHP_WEAPON_3_1", "SHP_WEAPON_3_2", "SHP_WEAPON_3_3", "SHP_WEAPON_3_4"]:
-        return plasmacannon if not tech_is_complete("SHP_WEAPON_4_1") else 0
-    if tech_name in ["SHP_WEAPON_4_1", "SHP_WEAPON_4_2", "SHP_WEAPON_4_3", "SHP_WEAPON_4_4"]:
-        return deathray
+    # colony pod parts
+    if tech_name in AIDependencies.COLONY_POD_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner())
+        return useful
 
     # default priority for unseen techs
+    print "Tech %s does not have a priority, falling back to default." % tech_name
+
     return 1
 
 
@@ -392,7 +356,6 @@ def generate_research_orders():
     report_adjustments = False
     empire = fo.getEmpire()
     empire_id = empire.empireID
-    enemies_sighted = foAI.foAIstate.misc.get('enemies_sighted', {})
     galaxy_is_sparse = ColonisationAI.galaxy_is_sparse()
     print "Research Queue Management:"
     resource_production = empire.resourceProduction(fo.resourceType.research)
@@ -448,45 +411,6 @@ def generate_research_orders():
     for tech_name in possible[-10:]:
         print "    %25s %8.6f %8.2f %s" % (tech_name, priorities[tech_name], research_reqs[tech_name][1], research_reqs[tech_name][0])
     print
-
-    # TODO: Remove the following example code
-    # Example/Test code for the new ShipDesigner functionality
-    techs = ["SHP_WEAPON_4_2", "SHP_TRANSSPACE_DRIVE", "SHP_INTSTEL_LOG", "SHP_ASTEROID_HULLS", ""]
-    for tech in techs:
-        this_tech = fo.getTech(tech)
-        if not this_tech:
-            print "Invalid Tech specified"
-            continue
-        unlocked_items = this_tech.unlockedItems
-        unlocked_hulls = []
-        unlocked_parts = []
-        for item in unlocked_items:
-            if item.type == fo.unlockableItemType.shipPart:
-                print "Tech %s unlocks a ShipPart: %s" % (tech, item.name)
-                unlocked_parts.append(item.name)
-            elif item.type == fo.unlockableItemType.shipHull:
-                print "Tech %s unlocks a ShipHull: %s" % (tech, item.name)
-                unlocked_hulls.append(item.name)
-        if not (unlocked_parts or unlocked_hulls):
-            print "No new ship parts/hulls unlocked by tech %s" % tech
-            continue
-        old_designs = ShipDesignAI.MilitaryShipDesigner().optimize_design(consider_fleet_count=False)
-        new_designs = ShipDesignAI.MilitaryShipDesigner().optimize_design(additional_hulls=unlocked_hulls, additional_parts=unlocked_parts, consider_fleet_count=False)
-        if not (old_designs and new_designs):
-            # AI is likely defeated; don't bother with logging error message
-            continue
-        old_rating, old_pid, old_design_id, old_cost = old_designs[0]
-        old_design = fo.getShipDesign(old_design_id)
-        new_rating, new_pid, new_design_id, new_cost = new_designs[0]
-        new_design = fo.getShipDesign(new_design_id)
-        if new_rating > old_rating:
-            print "Tech %s gives access to a better design!" % tech
-            print "old best design: Rating %.5f" % old_rating
-            print "old design specs: %s - " % old_design.hull, list(old_design.parts)
-            print "new best design: Rating %.5f" % new_rating
-            print "new design specs: %s - " % new_design.hull, list(new_design.parts)
-        else:
-            print "Tech %s gives access to new parts or hulls but there seems to be no military advantage." % tech
 
     total_rp = empire.resourceProduction(fo.resourceType.research)
     print "enqueuing techs. already spent RP: %s total RP: %s" % (fo.getEmpire().researchQueue.totalSpent, total_rp)
