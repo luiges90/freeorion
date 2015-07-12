@@ -190,7 +190,7 @@ def get_hull_priority(tech_name):
 
     chosen_hull = rng.randrange(4)
     org = hull if chosen_hull % 2 == 0 or rng.random() < 0.05 else offtrack_hull
-    robotic = hull if chosen_hull % 2 == 0 or rng.random() < 0.05 else offtrack_hull
+    robotic = hull if chosen_hull % 2 == 1 or rng.random() < 0.05 else offtrack_hull
     if ColonisationAI.got_ast:
         extra = rng.random() < 0.05
         asteroid = hull if chosen_hull == 2 or extra else offtrack_hull
