@@ -167,7 +167,6 @@ def generateOrders():  # pylint: disable=invalid-name
     random_seed = str(fo.getGalaxySetupData().seed) + "%05d%s" % (turn, fo.getEmpire().name)
     random.seed(random_seed)
     aggression_name = fo.aggression.values[foAIstate.aggression].name
-
     if turn == 1:
         declare_war_on_all()
         human_player = fo.empirePlayerID(1)
