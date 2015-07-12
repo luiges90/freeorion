@@ -90,7 +90,7 @@ def get_detection_priority():
 def get_stealth_priority():
     max_stealth_species = get_max_stealth_species()
     if max_stealth_species[1] > 0:
-        print("Has a stealthy species " + max_stealth_species[0] + ". Increase stealth tech priority")
+        print "Has a stealthy species %s. Increase stealth tech priority" % max_stealth_species[0]
         return 2.5
     else:
         return 0
@@ -104,6 +104,7 @@ def get_xeno_genetics_priority():
         return get_population_boost_priority()
     if has_only_bad_colonizers():
         # Empire only have lousy colonisers, xeno-genetics are really important for them
+        print "Empire has only lousy colonizers, increase priority to xeno_genetics"
         return get_population_boost_priority() * 3
     else:
         return get_population_boost_priority()
@@ -111,20 +112,30 @@ def get_xeno_genetics_priority():
 def get_xenoarch_priority():
     if foAI.foAIstate.aggression < fo.aggression.typical:
         return 1
-    return 5 if ColonisationAI.gotRuins else 0 # get xenoarcheology when we have ruins, otherwise it is useless
+    if ColonisationAI.gotRuins:
+        print "Empire has ruins, increase priority to xenoarch"
+        return 5
+    else:
+        return 0
 
 def get_artificial_black_hole_priority():
     if has_star(fo.starType.blackHole) or not has_star(fo.starType.red):
+        print "Already have black hole, or does not have a red star to turn to black hole. Skipping ART_BLACK_HOLE"
         return 0
     for tech in AIDependencies.SHIP_TECHS_REQUIRING_BLACK_HOLE:
         if tech_is_complete(tech):
+            print "Solar hull is researched, needs a black hole to produce it. Research ART_BLACK_HOLE now!"
             return 999
     return 1
 
 def get_nest_domestication_priority():
     if foAI.foAIstate.aggression < fo.aggression.typical:
-        return 1
-    return 3 if ColonisationAI.got_nest else 0
+        return 0
+    if ColonisationAI.got_nest:
+        print "Monster nest found. Increase priority to nest domestication"
+        return 3
+    else:
+        return 0
 
 def get_priority(tech_name):
     """
