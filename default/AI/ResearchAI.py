@@ -7,8 +7,12 @@ import ColonisationAI
 import ShipDesignAI
 import random
 
-from freeorion_tools import tech_is_complete, chat_human
+from freeorion_tools import tech_is_complete
 
+priorities = {}
+empire_stars = {}
+
+# TODO research AI no longer use this method, rename and move this method elsewhere
 def get_research_index():
     empire_id = fo.empireID()
     research_index = empire_id % 2
@@ -17,6 +21,11 @@ def get_research_index():
     elif foAI.foAIstate.aggression >= fo.aggression.typical:
         research_index += 1
     return research_index
+
+def has_star(star_type):
+    if star_type not in empire_stars:
+        empire_stars[star_type] = len(AIstate.empireStars.get(star_type, [])) != 0
+    return empire_stars[star_type]
 
 def has_only_bad_colonizers():
     most_adequate = 0
@@ -31,6 +40,70 @@ def has_only_bad_colonizers():
         most_adequate = max(most_adequate, len(environs.get(fo.planetEnvironment.adequate, [])))
     return most_adequate == 0
 
+def get_defense_priority():
+    # TODO reduce priority at very early stage for defense techs, until enemies seen
+    if 'defense' not in priorities:
+        priorities['defense'] = 2 if foAI.foAIstate.aggression <= fo.aggression.cautious else 1
+    return priorities['defense']
+
+def get_production_boost_priority():
+    return 1.5
+
+def get_research_boost_priority():
+    return 2
+
+def get_production_and_research_boost_priority():
+    return 3
+
+def get_population_boost_priority():
+    return 2
+
+def get_supply_boost_priority():
+    # TODO consider starlane density and planet density instead
+    if 'supply' not in priorities:
+        priorities['supply'] = 2 if ColonisationAI.galaxy_is_sparse() else 0.5
+    return priorities['supply']
+
+def get_meter_change_boost_priority():
+    return 1
+
+def get_detection_priority():
+    return 1  # TODO consider stealth of enemies
+
+def get_stealth_priority():
+    return 0  # TODO stealthy species want more stealth techs
+
+def get_genome_bank_priority():
+    # TODO boost genome bank if enemy is using bioterror
+    return 1
+
+def get_xeno_genetics_priority():
+    if foAI.foAIstate.aggression < fo.aggression.cautious:
+        return get_population_boost_priority()
+    if has_only_bad_colonizers():
+        # Empire only have lousy colonisers, xeno-genetics are really important for them
+        return get_population_boost_priority() * 3
+    else:
+        return get_population_boost_priority()
+
+def get_xenoarch_priority():
+    if foAI.foAIstate.aggression < fo.aggression.typical:
+        return 1
+    return 5 if ColonisationAI.gotRuins else 0 # get xenoarcheology when we have ruins, otherwise it is useless
+
+def get_artificial_black_hole_priority():
+    if has_star(fo.starType.blackHole) or not has_star(fo.starType.red):
+        return 0
+    for tech in AIDependencies.SHIP_TECHS_REQUIRING_BLACK_HOLE:
+        if tech_is_complete(tech):
+            return 999
+    return 1
+
+def get_nest_domestication_priority():
+    if foAI.foAIstate.aggression < fo.aggression.typical:
+        return 1
+    return 3 if ColonisationAI.got_nest else 0
+
 def get_priority(tech_name):
     """
     Get tech priority. 1 is default. 0 if not useful (but doesn't hurt to research),
@@ -40,28 +113,7 @@ def get_priority(tech_name):
     rng = random.Random()
     rng.seed(fo.getEmpire().name + fo.getGalaxySetupData().seed)
 
-    IMMEDIATE = 999 # i.e. research this tech NOW!
-    USELESS = 0 # useless for AI, mostly because the AI doesn't know how to use them
-    DEFAULT = 1
-    UNRESEARCHABLE = -1 # anything unresearchable should use this TODO obtain this information from techs.txt
-
-    theory = 0 # theories has 0 priority as they don't unlock anything. If it ends up prereq for any other tech those tech will add the theories in.
-
-    growth = 2 # maximum population growth has higher priority.
-    production_boost = 1.5 # production boosts have higher priority. This include buildings that boosts production
-    research_boost = 2 # research boosts have higher priority. This include buildings that boosts research
-    meter_boost = 1
     shield = 1.25 # shields are more powerful than armors or weapons
-    # TODO reduce priority at very early stage for defense techs, until enemies seen
-    defensive = 2 if foAI.foAIstate.aggression <= fo.aggression.cautious else (1 if fo.currentTurn() > 10 else 0.5)
-    # TODO consider starlane density and planet density instead
-    supply = 2 if ColonisationAI.galaxy_is_sparse() else 0.5
-
-    has_red_star = len(AIstate.empireStars.get(fo.starType.red, [])) != 0
-    has_blue_star = len(AIstate.empireStars.get(fo.starType.blue, [])) != 0
-    has_black_hole = len(AIstate.empireStars.get(fo.starType.blackHole, [])) != 0
-    has_neutron_star = len(AIstate.empireStars.get(fo.starType.neutron , [])) != 0
-
     hull = 1
     offtrack_hull = 0.05
     offtrack_subhull = 0.25
@@ -77,7 +129,7 @@ def get_priority(tech_name):
             robotic = offtrack_hull
     else:
         asteroid = offtrack_hull
-    if has_blue_star or has_black_hole:
+    if has_star(fo.starType.blue) or has_star(fo.starType.blackHole):
         extra = rng.random() < 0.05
         energy = hull if chosen_hull == 3 or extra else offtrack_hull
         if energy == hull and not extra:
@@ -126,116 +178,85 @@ def get_priority(tech_name):
     engine = 1 if (rng.random() < 0.8 if ColonisationAI.galaxy_is_sparse() else rng.random() < 0.4) else 0
     fuel = 1 if (rng.random() < 0.8 if ColonisationAI.galaxy_is_sparse() else rng.random() < 0.4) else 0
 
-    detection = 1 # TODO Consider stealth of enemies
-    stealth = 2.2 if rng.random() < 0.1 else 0.2 # TODO stealthy species probably want more stealthy techs, and base one enemies detection
+    if tech_name in AIDependencies.UNRESEARCHABLE_TECHS:
+        return -1
 
-    if tech_name in ["SHP_KRILL_SPAWN", "DEF_PLANET_CLOAK"]:
-        return UNRESEARCHABLE
+    if tech_name in AIDependencies.UNUSED_TECHS:
+        return 0
 
-    # defense techs
-    if tech_name in ["DEF_GARRISON_1", "DEF_GARRISON_2", "DEF_GARRISON_3", "DEF_GARRISON_4"]:
-        return defensive - 0.01 # garrison are less important/powerful among all defenses
-    if tech_name in ["DEF_DEFENSE_NET_1", "DEF_DEFENSE_NET_2", "DEF_DEFENSE_NET_3"]:
-        return defensive
-    if tech_name in ["DEF_DEFENSE_NET_REGEN_1", "DEF_DEFENSE_NET_REGEN_2"]:
-        return defensive
-    if tech_name in ["DEF_PLAN_BARRIER_SHLD_1", "DEF_PLAN_BARRIER_SHLD_2", "DEF_PLAN_BARRIER_SHLD_3", "DEF_PLAN_BARRIER_SHLD_4", "DEF_PLAN_BARRIER_SHLD_5"]:
-        return defensive
-    if tech_name in ["DEF_SYST_DEF_MINE_1", "DEF_SYST_DEF_MINE_2", "DEF_SYST_DEF_MINE_3"]:
-        return defensive + 0.01 # mines are more important/powerful among all defenses
+    if tech_name in AIDependencies.THEORY_TECHS:
+        return 0
 
-    # learning
-    if tech_name in ["LRN_PHYS_BRAIN", "LRN_TRANSLING_THT", "LRN_PSIONICS", "LRN_GRAVITONICS", "LRN_EVERYTHING", "LRN_MIND_VOID", "LRN_NDIM_SUBSPACE", "LRN_TIME_MECH"]:
-        return theory
-    if tech_name in ["LRN_ALGO_ELEGANCE", "LRN_ARTIF_MINDS", "LRN_DISTRIB_THOUGHT", "LRN_QUANT_NET", "LRN_STELLAR_TOMOGRAPHY"]:
-        return research_boost
-    if tech_name in ["LRN_ENCLAVE_VOID", "LRN_UNIF_CONC"]:
-        return research_boost
-    if tech_name in ["LRN_XENOARCH"]:
-        if foAI.foAIstate.aggression < fo.aggression.typical:
-            return DEFAULT
-        return 5 if ColonisationAI.gotRuins else USELESS # get xenoarcheology when we have ruins, otherwise it is useless
-    if tech_name in ["LRN_FORCE_FIELD"]:
-        return shield
-    if tech_name in ["LRN_SPATIAL_DISTORT_GEN", "LRN_GATEWAY_VOID", "LRN_PSY_DOM"]:
-        return USELESS
-    if tech_name in ["LRN_ART_BLACK_HOLE"]:
-        if has_black_hole or not has_red_star:
-            return USELESS
-        if tech_is_complete("SHP_SOLAR_CONT"):
-            return IMMEDIATE
-        return DEFAULT
-    if tech_name in ["LRN_TRANSCEND"]:
-        return DEFAULT # Transcendence requires so much RP anyway it will be higher and only higher than techs considered useless lol
+    # defense
+    if tech_name.startswith(AIDependencies.DEFENSE_TECHS_PREFIX):
+        return get_defense_priority()
+
+    # production
+    if tech_name in AIDependencies.PRODUCTION_BOOST_TECHS:
+        return get_production_boost_priority()
+
+    if tech_name == AIDependencies.PRO_MICROGRAV_MAN:
+        return get_production_boost_priority() if ColonisationAI.got_ast else 0
+
+    if tech_name == AIDependencies.PRO_ORBITAL_GEN:
+        return get_production_boost_priority if ColonisationAI.got_gg else 0
+
+    if tech_name == AIDependencies.PRO_SINGULAR_GEN:
+        return get_production_boost_priority if has_star(fo.starType.blackHole) else 0
+
+    # research
+    if tech_name in AIDependencies.RESEARCH_BOOST_TECHS:
+        return get_research_boost_priority()
+
+    if tech_name in AIDependencies.PRODUCTION_AND_RESEARCH_BOOST_TECHS:
+        return get_production_and_research_boost_priority()
 
     # growth
-    if tech_name in ["GRO_PLANET_ECOL", "GRO_GENETIC_ENG", "GRO_ADV_ECOMAN", "GRO_NANOTECH_MED", "GRO_TRANSORG_SENT"]:
-        return theory
-    if tech_name in ["GRO_SYMBIOTIC_BIO", "GRO_XENO_HYBRIDS", "GRO_CYBORG", "GRO_SUBTER_HAB"]:
-        return growth
-    if tech_name in ["GRO_XENO_GENETICS"]:
-        if foAI.foAIstate.aggression < fo.aggression.cautious:
-            return DEFAULT
-        if has_only_bad_colonizers():
-            return growth * 3 # Empire only have lousy colonisers, xeno-genetics are really important for them
-        else:
-            return growth
-    if tech_name in ["GRO_GENETIC_MED"]:
-        return DEFAULT # TODO boost this to get the genome bank if enemy is using bioterror?
-    if tech_name in ["GRO_LIFECYCLE_MAN", "GRO_NANO_CYBERNET"]: # TODO consider ship part simulation calculation
-        return DEFAULT
-    if tech_name in ["GRO_ENERGY_META"]:
-        return production_boost + research_boost
-    if tech_name in ["GRO_TERRAFORM", "GRO_BIOTERROR", "GRO_GAIA_TRANS"]:
-        return USELESS
+    if tech_name in AIDependencies.POPULATION_BOOST_TECHS:
+        return get_population_boost_priority()
+
+    if tech_name == AIDependencies.GRO_XENO_GENETICS:
+        return get_xeno_genetics_priority()
+
+    # supply
+    if tech_name in AIDependencies.SUPPLY_BOOST_TECHS:
+        return get_supply_boost_priority()
+
+    # meter change
+    if tech_name in AIDependencies.METER_CHANGE_BOOST_TECHS:
+        return get_meter_change_boost_priority()
+
+    # detection
+    if tech_name in AIDependencies.DETECTION_TECHS:
+        return get_detection_priority()
+
+    # Stealth
+    if tech_name in AIDependencies.STEALTH_TECHS:
+        return get_stealth_priority()
+
+    # xenoarcheology
+    if tech_name == AIDependencies.LRN_XENOARCH:
+        return get_xenoarch_priority()
+
+    # artificial black hole
+    if tech_name == AIDependencies.LRN_ART_BLACK_HOLE:
+        return get_artificial_black_hole_priority()
+
+    # genome bank (its tech)
+    if tech_name == AIDependencies.GRO_GENOME_BANK:
+        return get_genome_bank_priority()
+
+    # concentration camp
+    if tech_name == AIDependencies.CON_CONC_CAMP:
+        return 0  # TODO Concentration camps are now disabled
+
+    # tames space monsters
+    if tech_name == AIDependencies.NEST_DOMESTICATION_TECH:
+        return get_nest_domestication_priority()
 
     # Production
-    if tech_name in ["PRO_NANOTECH_PROD", "PRO_ZERO_GEN"]:
-        return theory
-    if tech_name in ["PRO_ROBOTIC_PROD", "PRO_FUSION_GEN", "PRO_SENTIENT_AUTOMATION"]:
-        return production_boost
-    if tech_name in ["PRO_INDUSTRY_CENTER_I", "PRO_INDUSTRY_CENTER_II", "PRO_INDUSTRY_CENTER_III", "PRO_SOL_ORB_GEN"]:
-        return production_boost
-    if tech_name in ["PRO_MICROGRAV_MAN"]:
-        return production_boost if ColonisationAI.got_ast else USELESS # useless if we have no plan for asteroids
-    if tech_name in ["PRO_ORBITAL_GEN"]:
-        return production_boost if ColonisationAI.got_gg else USELESS # useless if we have no plan for gas giants
-    if tech_name in ["PRO_EXOBOTS"]:
-        return DEFAULT
-    if tech_name in ["PRO_NDIM_ASSMB"]:
-        return DEFAULT # TODO does AI use/value Hyperspatial Dam?
-    if tech_name in ["PRO_SINGULAR_GEN"]:
-        return production_boost if has_black_hole else USELESS
     if tech_name in ["PRO_NEUTRONIUM_EXTRACTION"]:
-        return armor if has_neutron_star else USELESS # application of neutronium extraction is armor only for now
-
-    # Construction
-    if tech_name in ["CON_ASYMP_MATS", "CON_ARCH_PSYCH"]:
-        return theory
-    if tech_name in ["CON_ARCH_MONOFILS", "CON_GAL_INFRA", "CON_CONTGRAV_ARCH", "CON_ORBITAL_CON"]:
-        return supply
-    if tech_name in ["CON_FRC_ENRG_STRC"]:
-        return meter_boost
-    if tech_name in ["CON_ORBITAL_HAB", "CON_NDIM_STRC"]:
-        return growth
-    if tech_name in ["CON_TRANS_ARCH"]:
-        return meter_boost
-    if tech_name in ["CON_ORGANIC_STRC", "CON_PLANET_DRIVE", "CON_STARGATE"]:
-        return USELESS # AI does not use stargate, planetary starline drive, spatial distortion nor bioterror
-    if tech_name in ["CON_ART_HEAVENLY", "CON_ART_PLANET"]:
-        return USELESS # AI does not create artificial moons or planets
-    if tech_name in ["CON_CONC_CAMP"]:
-        return 0 # TODO Concentration camps are now disabled
-    if tech_name in ["CON_FRC_ENRG_CAMO"]:
-        return stealth
-
-    # Ships
-    if tech_name in ["SHP_GAL_EXPLO"]:
-        return theory
-    if tech_name in ["SHP_DOMESTIC_MONSTER"]:
-        return USELESS # TODO does "Tames space monsters" really work?!?! Does AI know this? Anyway tamable space monsters are rare...
-    if tech_name in ["SHP_INTSTEL_LOG"]:
-        return DEFAULT # interstellar logistics increases ship speed
+        return armor if has_star(fo.starType.neutron) else 0 # application of neutronium extraction is armor only for now
 
     # Robotic hulls
     if tech_name in ["SHP_MIL_ROBO_CONT", "SHP_MIDCOMB_LOG"]:
@@ -247,7 +268,7 @@ def get_priority(tech_name):
     if tech_name in ["SHP_NANOROBO_MAINT"]:
         return min(robotic, nanorobo)
     if tech_name in ["SHP_XENTRONIUM_HULL"]:
-        return DEFAULT # this is not a robotic hull!
+        return 1 # this is not a robotic hull!
 
     # Asteroid hulls
     if tech_name in ["SHP_ASTEROID_HULLS", "SHP_ASTEROID_REFORM", "SHP_MONOMOLEC_LATTICE", "SHP_SCAT_AST_HULL"]:
@@ -273,11 +294,11 @@ def get_priority(tech_name):
     if tech_name in ["SHP_FRC_ENRG_COMP"]:
         return energy
     if tech_name in ["SHP_QUANT_ENRG_MAG"]:
-        return min(energy, energymag, IMMEDIATE if has_blue_star or has_black_hole else USELESS)
+        return min(energy, energymag, 999 if has_star(fo.starType.blue) or has_star(fo.starType.blackHole) else 0)
     if tech_name in ["SHP_ENRG_BOUND_MAN"]:
-        return min(energy, energyfrac, IMMEDIATE if has_blue_star or has_black_hole else USELESS)
+        return min(energy, energyfrac, 999 if has_star(fo.starType.blue) or has_star(fo.starType.blackHole) else 0)
     if tech_name in ["SHP_SOLAR_CONT"]:
-        return min(energy, IMMEDIATE if has_red_star or has_black_hole else USELESS) # red star can be turned into has_black_hole by Artificial black hole
+        return min(energy, 999 if has_star(fo.starType.red) or has_star(fo.starType.blackHole) else 0) # red star can be turned into has_black_hole by Artificial black hole
 
     # damage control
     if tech_name in ["SHP_REINFORCED_HULL"]:
@@ -290,39 +311,28 @@ def get_priority(tech_name):
         return engine
     if tech_name in ["SHP_DEUTERIUM_TANK", "SHP_ANTIMATTER_TANK", "SHP_ZERO_POINT"]:
         return fuel
-    if tech_name in ["SHP_NOVA_BOMB", "SHP_DEATH_SPORE", "SHP_BIOTERM"]:
-        return USELESS # AI does not use Nova bomb nor bioterror
 
     # ship shields
     if tech_name in ["SHP_DEFLECTOR_SHIELD", "SHP_PLASMA_SHIELD", "SHP_BLACKSHIELD"]:
         return shield
     if tech_name in ["SHP_MULTISPEC_SHIELD"]:
-        return max(shield, stealth)
+        return max(shield, get_stealth_priority())
 
     # ship armor TODO include these branches into ship-design calculation
     if tech_name in ["SHP_ROOT_ARMOR", "SHP_ZORTRIUM_PLATE"]:
         return armor
     if tech_name in ["SHP_DIAMOND_PLATE", "SHP_XENTRONIUM_PLATE"]:
-        return USELESS if asteroid == hull or has_neutron_star else armor # asteroid hull line and neutronium extraction includes better armors
+        return 0 if asteroid == hull or has_star(fo.starType.neutron) else armor # asteroid hull line and neutronium extraction includes better armors
 
     # weapons TODO include these branches into ship-design calculation
     if tech_name in ["SHP_ROOT_AGGRESSION", "SHP_WEAPON_1_2", "SHP_WEAPON_1_3", "SHP_WEAPON_1_4"]:
-        return massdriver if not tech_is_complete("SHP_WEAPON_4_1") else USELESS # don't research obsolete weapons if get deathray from ruins
+        return massdriver if not tech_is_complete("SHP_WEAPON_4_1") else 0 # don't research obsolete weapons if get deathray from ruins
     if tech_name in ["SHP_WEAPON_2_1", "SHP_WEAPON_2_2", "SHP_WEAPON_2_3", "SHP_WEAPON_2_4"]:
-        return laser if not tech_is_complete("SHP_WEAPON_4_1") else USELESS
+        return laser if not tech_is_complete("SHP_WEAPON_4_1") else 0
     if tech_name in ["SHP_WEAPON_3_1", "SHP_WEAPON_3_2", "SHP_WEAPON_3_3", "SHP_WEAPON_3_4"]:
-        return plasmacannon if not tech_is_complete("SHP_WEAPON_4_1") else USELESS
+        return plasmacannon if not tech_is_complete("SHP_WEAPON_4_1") else 0
     if tech_name in ["SHP_WEAPON_4_1", "SHP_WEAPON_4_2", "SHP_WEAPON_4_3", "SHP_WEAPON_4_4"]:
         return deathray
-
-    # detection
-    if tech_name in ["SPY_DETECT_1", "SPY_DETECT_2", "SPY_DETECT_3", "SPY_DETECT_4", "SPY_DETECT_5", "SPY_DIST_MOD", "SPY_LIGHTHOUSE"]:
-        return detection
-
-    # stealth
-    if tech_name in ["SPY_ROOT_DECEPTION", "SPY_STEALTH_1", "SPY_STEALTH_2", "SPY_STEALTH_3", "SPY_STEALTH_4"]:
-        return stealth
-
 
     # default priority for unseen techs
     return 1
