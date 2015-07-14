@@ -131,6 +131,27 @@ def get_detection_priority():
     # TODO consider stealth of enemies
     return 1
 
+def get_weapon_priority():
+    return 1
+
+def get_armor_priority():
+    return 1
+
+def get_shield_priority():
+    return 1
+
+def get_engine_priority():
+    return 1 if rng.random() < 0.7 else 0
+
+def get_fuel_priority():
+    return 1 if rng.random() < 0.7 else 0
+
+def get_troop_pod_priority():
+    return 1
+
+def get_colony_pod_priority():
+    return 1
+
 def get_stealth_priority():
     max_stealth_species = get_max_stealth_species()
     if max_stealth_species[1] > 0:
@@ -314,20 +335,40 @@ def get_priority(tech_name):
     if tech_name in AIDependencies.HULL_TECHS:
         return get_hull_priority(tech_name)
 
-    # ship parts
-    if tech_name in AIDependencies.SHIP_PART_TECHS:
+    # ship weapons
+    if tech_name in AIDependencies.WEAPON_TECHS:
         useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
-        return useful
+        return useful * get_weapon_priority()
+
+    # ship armors
+    if tech_name in AIDependencies.ARMOR_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return useful * get_armor_priority()
+
+    # ship engines
+    if tech_name in AIDependencies.ENGINE_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return useful * get_engine_priority()
+
+    # ship fuels
+    if tech_name in AIDependencies.FUEL_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return useful * get_fuel_priority()
+
+    # ship shields
+    if tech_name in AIDependencies.SHIELD_TECHS:
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return useful * get_shield_priority()
 
     # troop pod parts
     if tech_name in AIDependencies.TROOP_POD_TECHS:
         useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner())
-        return useful
+        return useful * get_troop_pod_priority()
 
     # colony pod parts
     if tech_name in AIDependencies.COLONY_POD_TECHS:
         useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner())
-        return useful
+        return useful * get_colony_pod_priority()
 
     # default priority for unseen techs
     print "Tech %s does not have a priority, falling back to default." % tech_name
