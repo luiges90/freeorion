@@ -7,6 +7,7 @@ import ColonisationAI
 import ShipDesignAI
 import random
 
+from ProductionAI import get_design_cost
 from freeorion_tools import tech_is_complete, get_ai_tag_grade
 
 empire_stars = {}
@@ -79,17 +80,19 @@ def get_ship_tech_usefulness(tech, ship_designer):
         return 0
     old_rating, old_pid, old_design_id, old_cost = old_designs[0]
     old_design = fo.getShipDesign(old_design_id)
+    old_rating = old_rating / get_design_cost(old_design, -1)
     new_rating, new_pid, new_design_id, new_cost = new_designs[0]
     new_design = fo.getShipDesign(new_design_id)
+    new_rating = new_rating / get_design_cost(new_design, -1)
     if new_rating > old_rating:
         ratio = new_rating / old_rating
         print "Tech %s gives access to a better design!" % tech
-        print "old best design: Rating %.5f" % old_rating
+        print "old best design: Rating %.5f" % (old_rating * 10000)
         print "old design specs: %s - " % old_design.hull, list(old_design.parts)
-        print "new best design: Rating %.5f" % new_rating
+        print "new best design: Rating %.5f" % (new_rating * 10000)
         print "new design specs: %s - " % new_design.hull, list(new_design.parts)
-        print "priority for tech %s: %.5f" % (tech, ratio)
-        return ratio
+        print "priority for tech %s: %.5f" % (tech, ratio - 1)
+        return (ratio - 1)
     else:
         print "Tech %s gives access to new parts or hulls but there seems to be no military advantage." % tech
         return 0
@@ -128,13 +131,25 @@ def get_detection_priority(rng):
     return 1
 
 def get_weapon_priority(rng):
-    return 1
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for aggression techs."
+        return 1
+    else:
+        return 0.1
 
 def get_armor_priority(rng):
-    return 1
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for aggression techs."
+        return 1
+    else:
+        return 0.1
 
 def get_shield_priority(rng):
-    return 1
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for aggression techs."
+        return 1.25
+    else:
+        return 0.1
 
 def get_engine_priority(rng):
     return 1 if rng.random() < 0.7 else 0
@@ -143,7 +158,11 @@ def get_fuel_priority(rng):
     return 1 if rng.random() < 0.7 else 0
 
 def get_troop_pod_priority(rng):
-    return 1
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for aggression techs."
+        return 1
+    else:
+        return 0
 
 def get_colony_pod_priority(rng):
     return 1
@@ -199,7 +218,11 @@ def get_nest_domestication_priority(rng):
         return 0
 
 def get_damage_control_priority(rng):
-    return 1
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for aggression techs."
+        return 1
+    else:
+        return 0.1
 
 def get_hull_priority(rng, tech_name):
     hull = 1
@@ -230,16 +253,23 @@ def get_hull_priority(rng, tech_name):
         get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
         get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner()),
         get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
-    if tech_name in AIDependencies.ROBOTIC_HULL_TECHS:
-        return robotic * useful
-    elif tech_name in AIDependencies.ORGANIC_HULL_TECHS:
-        return org * useful
-    elif tech_name in AIDependencies.ASTEROID_HULL_TECHS:
-        return asteroid * useful
-    elif tech_name in AIDependencies.ENERGY_HULL_TECHS:
-        return energy * useful
+    
+    if foAI.foAIstate.misc.get('enemies_sighted', {}):
+        print "Enemy sighted. Increasing priority for aggression techs."
+        aggression = 1
     else:
-        return useful
+        aggression = 0.1
+    
+    if tech_name in AIDependencies.ROBOTIC_HULL_TECHS:
+        return robotic * useful * aggression
+    elif tech_name in AIDependencies.ORGANIC_HULL_TECHS:
+        return org * useful * aggression
+    elif tech_name in AIDependencies.ASTEROID_HULL_TECHS:
+        return asteroid * useful * aggression
+    elif tech_name in AIDependencies.ENERGY_HULL_TECHS:
+        return energy * useful * aggression
+    else:
+        return useful * aggression
 
 def get_priority(rng, tech_name):
     """
@@ -343,18 +373,21 @@ def get_priority(rng, tech_name):
 
     # ship engines
     if tech_name in AIDependencies.ENGINE_TECHS:
-        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
-        return useful * get_engine_priority(rng)
+        # TODO optimize_design does not consider engines
+        # useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return get_engine_priority(rng)
 
     # ship fuels
     if tech_name in AIDependencies.FUEL_TECHS:
-        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
-        return useful * get_fuel_priority(rng)
+        # TODO optimize_design does not consider fuels
+        # useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return get_fuel_priority(rng)
 
     # ship shields
     if tech_name in AIDependencies.SHIELD_TECHS:
-        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
-        return useful * get_shield_priority(rng)
+        # TODO optimize_design does not consider shields
+        # useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        return get_shield_priority(rng)
 
     # troop pod parts
     if tech_name in AIDependencies.TROOP_POD_TECHS:
@@ -448,7 +481,7 @@ def generate_research_orders():
 
     print "Research priorities"
     print "    %25s %8s %8s %s" % ("Name", "Priority", "Cost", "Missing Prerequisties")
-    for tech_name in possible[-10:]:
+    for tech_name in possible[:]:
         print "    %25s %8.6f %8.2f %s" % (tech_name, priorities[tech_name], research_reqs[tech_name][1], research_reqs[tech_name][0])
     print
 
