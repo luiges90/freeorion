@@ -44,7 +44,7 @@ def get_max_stealth_species():
     stealth_grades = {'BAD': -15, 'GOOD': 15, 'GREAT': 40, 'ULTIMATE': 60}
     stealth = -999
     stealth_species = ""
-    for specName in ColonisationAI.empire_species:
+    for specName in ColonisationAI.empire_colonizers:
         this_spec = fo.getSpecies(specName)
         if not this_spec:
             continue
