@@ -80,16 +80,16 @@ def get_ship_tech_usefulness(tech, ship_designer):
         return 0
     old_rating, old_pid, old_design_id, old_cost = old_designs[0]
     old_design = fo.getShipDesign(old_design_id)
-    old_rating = old_rating / get_design_cost(old_design, -1)
+    old_rating = old_rating
     new_rating, new_pid, new_design_id, new_cost = new_designs[0]
     new_design = fo.getShipDesign(new_design_id)
-    new_rating = new_rating / get_design_cost(new_design, -1)
+    new_rating = new_rating
     if new_rating > old_rating:
-        ratio = new_rating / old_rating
+        ratio = (new_rating + 0.25) / (old_rating + 0.25) # old_rating may be potentially very low, causing ratio to skyrocket
         print "Tech %s gives access to a better design!" % tech
-        print "old best design: Rating %.5f" % (old_rating * 10000)
+        print "old best design: Rating %.5f" % old_rating
         print "old design specs: %s - " % old_design.hull, list(old_design.parts)
-        print "new best design: Rating %.5f" % (new_rating * 10000)
+        print "new best design: Rating %.5f" % new_rating
         print "new design specs: %s - " % new_design.hull, list(new_design.parts)
         print "priority for tech %s: %.5f" % (tech, ratio - 1)
         return (ratio - 1)
@@ -114,7 +114,7 @@ def get_research_boost_priority(rng):
     return 2
 
 def get_production_and_research_boost_priority(rng):
-    return 3
+    return 2.5
 
 def get_population_boost_priority(rng):
     return 2
@@ -147,7 +147,7 @@ def get_armor_priority(rng):
 def get_shield_priority(rng):
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
         print "Enemy sighted. Increasing priority for aggression techs."
-        return 1.25
+        return 1
     else:
         return 0.1
 
@@ -231,14 +231,14 @@ def get_hull_priority(rng, tech_name):
     chosen_hull = rng.randrange(4)
     org = hull if chosen_hull % 2 == 0 or rng.random() < 0.05 else offtrack_hull
     robotic = hull if chosen_hull % 2 == 1 or rng.random() < 0.05 else offtrack_hull
-    if ColonisationAI.got_ast:
+    if ColonisationAI.got_ast and tech_is_complete("PRO_EXOBOTS"):
         extra = rng.random() < 0.05
         asteroid = hull if chosen_hull == 2 or extra else offtrack_hull
         if asteroid == hull and not extra:
             org = offtrack_hull
             robotic = offtrack_hull
     else:
-        asteroid = offtrack_hull
+        asteroid = 0
     if has_star(fo.starType.blue) or has_star(fo.starType.blackHole):
         extra = rng.random() < 0.05
         energy = hull if chosen_hull == 3 or extra else offtrack_hull
@@ -247,7 +247,7 @@ def get_hull_priority(rng, tech_name):
             robotic = offtrack_hull
             asteroid = offtrack_hull
     else:
-        energy = offtrack_hull
+        energy = 0
 
     useful = max(
         get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
@@ -373,20 +373,23 @@ def get_priority(rng, tech_name):
 
     # ship engines
     if tech_name in AIDependencies.ENGINE_TECHS:
-        # TODO optimize_design does not consider engines
-        # useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        useful = max(
+                get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
+                get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner()),
+                get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
         return get_engine_priority(rng)
 
     # ship fuels
     if tech_name in AIDependencies.FUEL_TECHS:
-        # TODO optimize_design does not consider fuels
-        # useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        useful = max(
+                get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
+                get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner()),
+                get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
         return get_fuel_priority(rng)
 
     # ship shields
     if tech_name in AIDependencies.SHIELD_TECHS:
-        # TODO optimize_design does not consider shields
-        # useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
+        useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
         return get_shield_priority(rng)
 
     # troop pod parts
