@@ -85,14 +85,14 @@ def get_ship_tech_usefulness(tech, ship_designer):
     new_design = fo.getShipDesign(new_design_id)
     new_rating = new_rating
     if new_rating > old_rating:
-        ratio = (new_rating + 0.25) / (old_rating + 0.25) # old_rating may be potentially very low, causing ratio to skyrocket
+        ratio = (new_rating - old_rating) / (new_rating + old_rating)
         print "Tech %s gives access to a better design!" % tech
         print "old best design: Rating %.5f" % old_rating
         print "old design specs: %s - " % old_design.hull, list(old_design.parts)
         print "new best design: Rating %.5f" % new_rating
         print "new design specs: %s - " % new_design.hull, list(new_design.parts)
-        print "priority for tech %s: %.5f" % (tech, ratio - 1)
-        return (ratio - 1)
+        print "priority for tech %s: %.5f" % (tech, ratio)
+        return ratio * 3
     else:
         print "Tech %s gives access to new parts or hulls but there seems to be no military advantage." % tech
         return 0
@@ -231,7 +231,7 @@ def get_hull_priority(rng, tech_name):
     chosen_hull = rng.randrange(4)
     org = hull if chosen_hull % 2 == 0 or rng.random() < 0.05 else offtrack_hull
     robotic = hull if chosen_hull % 2 == 1 or rng.random() < 0.05 else offtrack_hull
-    if ColonisationAI.got_ast and tech_is_complete("PRO_EXOBOTS"):
+    if ColonisationAI.got_ast:
         extra = rng.random() < 0.05
         asteroid = hull if chosen_hull == 2 or extra else offtrack_hull
         if asteroid == hull and not extra:
@@ -409,7 +409,7 @@ def get_priority(rng, tech_name):
 
 
 def calculate_research_requirements(empire):
-    """calculate RPs and prerequisties of every tech"""
+    """calculate RPs and prerequisties of every tech, in (prereqs, cost)"""
     result = {}
 
     # TODO subtract already spent RPs from research projects
@@ -471,11 +471,13 @@ def generate_research_orders():
     rng.seed(fo.getEmpire().name + fo.getGalaxySetupData().seed)
 
     research_reqs = calculate_research_requirements(empire)
+    total_rp = empire.resourceProduction(fo.resourceType.research)
     priorities = {}
     for tech_name in fo.techs():
         priority = get_priority(rng, tech_name)
         if not tech_is_complete(tech_name) and priority >= 0:
-            priorities[tech_name] = float(priority) / research_reqs[tech_name][1]
+            turn_needed = research_reqs[tech_name][1] / total_rp
+            priorities[tech_name] = float(priority) / turn_needed**2
 
     #
     # put in highest priority techs until all RP spent
@@ -483,12 +485,11 @@ def generate_research_orders():
     possible = sorted(priorities.keys(), key=priorities.__getitem__)
 
     print "Research priorities"
-    print "    %25s %8s %8s %s" % ("Name", "Priority", "Cost", "Missing Prerequisties")
+    print "    %25s %8s %8s %s" % ("Name", "Priority", "Cost","Missing Prerequisties")
     for tech_name in possible[:]:
-        print "    %25s %8.6f %8.2f %s" % (tech_name, priorities[tech_name], research_reqs[tech_name][1], research_reqs[tech_name][0])
+        print "    %25s %8.6f %8.2f %s" % (tech_name, priorities[tech_name], research_reqs[tech_name][1],research_reqs[tech_name][0])
     print
 
-    total_rp = empire.resourceProduction(fo.resourceType.research)
     print "enqueuing techs. already spent RP: %s total RP: %s" % (fo.getEmpire().researchQueue.totalSpent, total_rp)
 
     if fo.currentTurn() == 1:
