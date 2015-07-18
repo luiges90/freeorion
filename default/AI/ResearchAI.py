@@ -83,7 +83,7 @@ def get_ship_tech_usefulness(tech, ship_designer):
     new_rating = new_rating
     if new_rating > old_rating:
         ratio = (new_rating - old_rating) / (new_rating + old_rating)
-        return ratio * 3
+        return ratio * 1.5 + 0.5
     else:
         return 0
 
@@ -460,7 +460,7 @@ def generate_research_orders():
         priority = get_priority(rng, tech_name)
         if not tech_is_complete(tech_name) and priority >= 0:
             turn_needed = research_reqs[tech_name][1] / total_rp
-            priorities[tech_name] = float(priority) / turn_needed**2
+            priorities[tech_name] = float(priority) / turn_needed
 
     #
     # put in highest priority techs until all RP spent
@@ -469,7 +469,7 @@ def generate_research_orders():
 
     print "Research priorities"
     print "    %25s %8s %8s %s" % ("Name", "Priority", "Cost","Missing Prerequisties")
-    for tech_name in possible[:]:
+    for tech_name in possible[-10:]:
         print "    %25s %8.6f %8.2f %s" % (tech_name, priorities[tech_name], research_reqs[tech_name][1],research_reqs[tech_name][0])
     print
 
