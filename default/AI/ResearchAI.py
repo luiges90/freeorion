@@ -459,8 +459,8 @@ def generate_research_orders():
     for tech_name in fo.techs():
         priority = get_priority(rng, tech_name)
         if not tech_is_complete(tech_name) and priority >= 0:
-            turn_needed = research_reqs[tech_name][1] / total_rp
-            priorities[tech_name] = float(priority) / max(1, (turn_needed - 12) / 4 + 1)**2
+            turn_needed = float(research_reqs[tech_name][1]) / total_rp
+            priorities[tech_name] = float(priority) / turn_needed / max(1, (turn_needed - 12) / 4 + 1)**2
 
     #
     # put in highest priority techs until all RP spent
