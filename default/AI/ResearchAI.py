@@ -65,13 +65,10 @@ def get_ship_tech_usefulness(tech, ship_designer):
     unlocked_parts = []
     for item in unlocked_items:
         if item.type == fo.unlockableItemType.shipPart:
-            print "Tech %s unlocks a ShipPart: %s" % (tech, item.name)
             unlocked_parts.append(item.name)
         elif item.type == fo.unlockableItemType.shipHull:
-            print "Tech %s unlocks a ShipHull: %s" % (tech, item.name)
             unlocked_hulls.append(item.name)
     if not (unlocked_parts or unlocked_hulls):
-        print "No new ship parts/hulls unlocked by tech %s" % tech
         return 0
     old_designs = ship_designer.optimize_design(consider_fleet_count=False)
     new_designs = ship_designer.optimize_design(additional_hulls=unlocked_hulls, additional_parts=unlocked_parts, consider_fleet_count=False)
@@ -86,15 +83,8 @@ def get_ship_tech_usefulness(tech, ship_designer):
     new_rating = new_rating
     if new_rating > old_rating:
         ratio = (new_rating - old_rating) / (new_rating + old_rating)
-        print "Tech %s gives access to a better design!" % tech
-        print "old best design: Rating %.5f" % old_rating
-        print "old design specs: %s - " % old_design.hull, list(old_design.parts)
-        print "new best design: Rating %.5f" % new_rating
-        print "new design specs: %s - " % new_design.hull, list(new_design.parts)
-        print "priority for tech %s: %.5f" % (tech, ratio)
         return ratio * 3
     else:
-        print "Tech %s gives access to new parts or hulls but there seems to be no military advantage." % tech
         return 0
 
 def get_defense_priority(rng):
@@ -102,7 +92,6 @@ def get_defense_priority(rng):
         print "AI is cautious. Increasing priority for defense techs."
         return 2
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for defense techs."
         return 1
     else:
         return 0.2
@@ -132,21 +121,18 @@ def get_detection_priority(rng):
 
 def get_weapon_priority(rng):
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for aggression techs."
         return 1
     else:
         return 0.1
 
 def get_armor_priority(rng):
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for aggression techs."
         return 1
     else:
         return 0.1
 
 def get_shield_priority(rng):
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for aggression techs."
         return 1
     else:
         return 0.1
@@ -159,7 +145,6 @@ def get_fuel_priority(rng):
 
 def get_troop_pod_priority(rng):
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for aggression techs."
         return 1
     else:
         return 0
@@ -219,8 +204,7 @@ def get_nest_domestication_priority(rng):
 
 def get_damage_control_priority(rng):
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for aggression techs."
-        return 1
+        return 0.5
     else:
         return 0.1
 
@@ -255,7 +239,6 @@ def get_hull_priority(rng, tech_name):
         get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
     
     if foAI.foAIstate.misc.get('enemies_sighted', {}):
-        print "Enemy sighted. Increasing priority for aggression techs."
         aggression = 1
     else:
         aggression = 0.1
