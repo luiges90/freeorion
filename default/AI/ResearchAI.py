@@ -377,7 +377,7 @@ def get_priority(rng, tech_name):
                 get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
                 get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner()),
                 get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
-        return get_engine_priority(rng)
+        return useful * get_engine_priority(rng)
 
     # ship fuels
     if tech_name in AIDependencies.FUEL_TECHS:
@@ -385,12 +385,12 @@ def get_priority(rng, tech_name):
                 get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner()),
                 get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardTroopShipDesigner()),
                 get_ship_tech_usefulness(tech_name, ShipDesignAI.StandardColonisationShipDesigner()))
-        return get_fuel_priority(rng)
+        return useful * get_fuel_priority(rng)
 
     # ship shields
     if tech_name in AIDependencies.SHIELD_TECHS:
         useful = get_ship_tech_usefulness(tech_name, ShipDesignAI.MilitaryShipDesigner())
-        return get_shield_priority(rng)
+        return useful * get_shield_priority(rng)
 
     # troop pod parts
     if tech_name in AIDependencies.TROOP_POD_TECHS:
