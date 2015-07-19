@@ -455,6 +455,10 @@ def generate_research_orders():
 
     research_reqs = calculate_research_requirements(empire)
     total_rp = empire.resourceProduction(fo.resourceType.research)
+
+    if total_rp <= 0: # No RP available - no research.
+        return
+
     priorities = {}
     for tech_name in fo.techs():
         priority = get_priority(rng, tech_name)
