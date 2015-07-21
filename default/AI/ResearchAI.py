@@ -215,7 +215,7 @@ def get_hull_priority(tech_name):
 
     chosen_hull = choices['hull']
     organic = hull if chosen_hull % 2 == 0 or choices['extra_organic_hull'] else offtrack_hull
-    robotic = hull if chosen_hull % 2 == 1 or choices['extra_robotic_hull']	else offtrack_hull
+    robotic = hull if chosen_hull % 2 == 1 or choices['extra_robotic_hull'] else offtrack_hull
     if ColonisationAI.got_ast:
         extra = choices['extra_asteroid_hull']
         asteroid = hull if chosen_hull == 2 or extra else offtrack_hull
